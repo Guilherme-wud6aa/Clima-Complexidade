@@ -5,14 +5,13 @@ latitude = -10.96
 longitude = -37.05
 datas = []
 hoje = date.today()
-next_day = hoje + timedelta(days=1)
-next_week = hoje + timedelta(days=8)
-
+last_day = hoje - timedelta(days=1)
+last_week = hoje - timedelta(days=8)
 
 url = (
     f"https://api.open-meteo.com/v1/forecast?"
     f"latitude={latitude}&longitude={longitude}"
-    f"&start_date={next_day}&end_date={next_week}"
+    f"&start_date={last_week}&end_date={last_day}"
     f"&daily=temperature_2m_max,temperature_2m_min,precipitation_sum"
     f"&timezone=America/Sao_Paulo"
 )
