@@ -33,7 +33,6 @@ climatologia = {
     "primavera": 26.8
 }
 
-# Pesos originais
 pesos_estacao = {
     "verao": (0.70, 0.30),
     "primavera": (0.65, 0.35),
@@ -48,7 +47,8 @@ url = (
     f"https://api.open-meteo.com/v1/forecast?"
     f"latitude={latitude}&longitude={longitude}"
     f"&start_date={last_week}&end_date={last_day}"
-    f"&daily=temperature_2m_max,temperature_2m_min,precipitation_sum"
+    f"&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,"
+    f"wind_speed_10m_max,relative_humidity_2m_mean"
     f"&timezone=America/Sao_Paulo"
 )
 
@@ -57,35 +57,53 @@ data = response.json()
 
 temps_max = data["daily"]["temperature_2m_max"]
 temps_min = data["daily"]["temperature_2m_min"]
+chuva = data["daily"]["precipitation_sum"]
+vento = data["daily"]["wind_speed_10m_max"]
+umidade = data["daily"]["relative_humidity_2m_mean"]
 
-media_max_semana = sum(temps_max) / len(temps_max)
-media_min_semana = sum(temps_min) / len(temps_min)
+media_max_semana = np.mean(temps_max)
+media_min_semana = np.mean(temps_min)
 
 # ------------------------------------
-# IA REAL — Random Forest para prever tendência
+# IA REAL — função genérica para prever qualquer variável
 # ------------------------------------
-def tendencia_ia_rf(valores):
-    X = np.arange(len(valores)).reshape(-1, 1)
+def prever_valor(valores, chuva, vento, umidade):
+    X = np.column_stack([
+        np.arange(len(valores)),
+        chuva,
+        vento,
+        umidade,
+    ])
     y = np.array(valores)
 
     modelo = RandomForestRegressor(
-        n_estimators=200,
-        max_depth=4,
+        n_estimators=250,
+        max_depth=6,
         random_state=42
     )
     modelo.fit(X, y)
 
-    pred_next = modelo.predict([[len(valores)]])[0]
-    atual = valores[-1]
+    entrada = np.array([[len(valores), chuva[-1], vento[-1], umidade[-1]]])
+    pred = modelo.predict(entrada)[0]
 
-    # suavização igual sua lógica original
+    return pred
+
+# Previsões individuais
+prev_vento = prever_valor(vento, chuva, vento, umidade)
+prev_umidade = prever_valor(umidade, chuva, vento, umidade)
+prev_chuva = prever_valor(chuva, chuva, vento, umidade)
+
+# Tendências de temperatura usando o mesmo método
+def tendencia_multi_rf(valores, chuva, vento, umidade):
+    pred_next = prever_valor(valores, chuva, vento, umidade)
+    atual = valores[-1]
     return (pred_next - atual) * 0.8
 
-tend_max = tendencia_ia_rf(temps_max)
-tend_min = tendencia_ia_rf(temps_min)
+tend_max = tendencia_multi_rf(temps_max, chuva, vento, umidade)
+tend_min = tendencia_multi_rf(temps_min, chuva, vento, umidade)
 
 # ------------------------------------
-# PREVISÃO FINAL
+# PREVISÃO FINAL — TEMP
 # ------------------------------------
 estacao = estacao_do_ano(hoje)
 media_estacao = climatologia[estacao]
@@ -94,9 +112,15 @@ peso_semana, peso_clima = pesos_estacao[estacao]
 prev_max = (media_max_semana * peso_semana) + (media_estacao * peso_clima) + tend_max
 prev_min = (media_min_semana * peso_semana) + (media_estacao * peso_clima) + tend_min
 
+# ------------------------------------
+# PRINT FINAL
+# ------------------------------------
 print(f"Estação atual: {estacao.capitalize()}")
 print(f"Média climatológica da estação: {media_estacao} °C\n")
 
-print("===== PREVISÃO DE AMANHÃ (IA PROFISSIONAL — RandomForest) =====")
-print(f"Temperatura máxima prevista: {prev_max:.2f} °C")
-print(f"Temperatura mínima prevista: {prev_min:.2f} °C")
+print("===== PREVISÃO DE AMANHÃ (IA MULTIVARIÁVEL — RF) =====")
+print(f"Temperatura máxima: {prev_max:.1f} °C")
+print(f"Temperatura mínima: {prev_min:.1f} °C")
+print(f"Vento máximo: {prev_vento:.1f} km/h")
+print(f"Umidade média: {prev_umidade:.1f} %")
+print(f"Precipitação: {prev_chuva:.1f} mm")
